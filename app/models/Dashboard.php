@@ -9,57 +9,83 @@ class Dashboard {
     }
 
     public function getVentasHoy() {
-        $q = "SELECT COALESCE(SUM(total),0) as total FROM ventas 
-              WHERE DATE(fecha) = CURRENT_DATE AND estado = 1";
-        return (float)$this->conn->query($q)->fetch(PDO::FETCH_ASSOC)['total'];
+        // Adaptado a las funciones de fecha nativas de SQLite
+        $q = "SELECT COALESCE(SUM(total), 0) as total FROM ventas 
+              WHERE date(fecha) = date('now', 'localtime') AND estado = 1";
+        $res = $this->conn->query($q)->fetch(PDO::FETCH_ASSOC);
+        return $res ? (float)$res['total'] : 0.00;
     }
 
     public function getTicketsHoy() {
         $q = "SELECT COUNT(*) as total FROM ventas 
-              WHERE DATE(fecha) = CURRENT_DATE AND estado = 1";
-        return (int)$this->conn->query($q)->fetch(PDO::FETCH_ASSOC)['total'];
+              WHERE date(fecha) = date('now', 'localtime') AND estado = 1";
+        $res = $this->conn->query($q)->fetch(PDO::FETCH_ASSOC);
+        return $res ? (int)$res['total'] : 0;
     }
 
     public function getTotalProductos() {
         $q = "SELECT COUNT(*) as total FROM productos WHERE estado = 1";
-        return (int)$this->conn->query($q)->fetch(PDO::FETCH_ASSOC)['total'];
+        $res = $this->conn->query($q)->fetch(PDO::FETCH_ASSOC);
+        return $res ? (int)$res['total'] : 0;
     }
 
     public function getStockBajo() {
-        $q = "SELECT COUNT(*) as total FROM variantes WHERE stock < 5 AND stock >= 0";
-        return (int)$this->conn->query($q)->fetch(PDO::FETCH_ASSOC)['total'];
+        // AUTOMATIZACIÓN: Cuenta los aceites/filtros cuyo stock cayó por debajo o igual al stock mínimo configurado
+        $q = "SELECT COUNT(*) as total FROM productos WHERE stock <= stock_minimo AND estado = 1";
+        $res = $this->conn->query($q)->fetch(PDO::FETCH_ASSOC);
+        return $res ? (int)$res['total'] : 0;
     }
 
     public function getVentasSemana() {
-        $q = "SELECT DATE(fecha) as dia, SUM(total) as total 
-            FROM ventas 
-            WHERE estado = 1 
-            AND DATE(fecha) >= CURRENT_DATE - INTERVAL '6 days'
-            GROUP BY DATE(fecha) 
-            ORDER BY DATE(fecha) ASC";
+        // Cambiado el INTERVAL de Postgres por el modificador '-6 days' nativo de SQLite
+        $q = "SELECT date(fecha) as dia, SUM(total) as total 
+              FROM ventas 
+              WHERE estado = 1 
+              AND date(fecha) >= date('now', '-6 days', 'localtime')
+              GROUP BY date(fecha) 
+              ORDER BY date(fecha) ASC";
         $stmt = $this->conn->prepare($q);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     public function getVentasMes() {
-        $q = "SELECT SUM(total) as total 
+        $q = "SELECT COALESCE(SUM(total), 0) as total 
               FROM ventas 
               WHERE estado = 1 
-              AND DATE(fecha) >= CURRENT_DATE - INTERVAL '30 days'";
-        return (float)$this->conn->query($q)->fetch(PDO::FETCH_ASSOC)['total'];
+              AND date(fecha) >= date('now', '-30 days', 'localtime')";
+        $res = $this->conn->query($q)->fetch(PDO::FETCH_ASSOC);
+        return $res ? (float)$res['total'] : 0.00;
     }
 
     public function getVentasRecientes($limite = 5) {
-        // CORRECCIÓN AQUÍ: DATE(v.fecha) = CURRENT_DATE
+        // Recupera el historial de las últimas transacciones procesadas en el lubricentro
         $q = "SELECT v.*, u.nombre as vendedor 
-              FROM ventas v JOIN usuarios u ON v.usuario_id = u.id_usuario
-              WHERE v.estado = 1 AND DATE(v.fecha) = CURRENT_DATE
+              FROM ventas v 
+              JOIN usuarios u ON v.usuario_id = u.id_usuario
+              WHERE v.estado = 1
               ORDER BY v.fecha DESC LIMIT :lim";
         $stmt = $this->conn->prepare($q);
         $stmt->bindParam(':lim', $limite, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+    public function getDatosGraficoSemanales() {
+        try {
+            // Forzamos a SQLite a interpretar las fechas usando 'localtime' en el rango y en el formateo
+            $q = "SELECT date(fecha) as fecha, SUM(total) as total 
+                  FROM ventas 
+                  WHERE date(fecha) >= date('now', '-7 days', 'localtime') 
+                  GROUP BY date(fecha) 
+                  ORDER BY date(fecha) ASC";
+                  
+            $stmt = $this->conn->prepare($q);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            return [];
+        }
+    }
+
 }
 ?>

@@ -22,8 +22,9 @@ class Caja {
         $existente = $this->obtenerCajaAbierta($usuario_id);
         if ($existente) return false;
 
-        $query = "INSERT INTO cajas (usuario_id, monto_inicial, estado, fecha_apertura) 
-                  VALUES (:uid, :monto, 1, CURRENT_TIMESTAMP)";
+        // Corregido: monto_apertura en lugar de monto_inicial, y date('now', 'localtime')
+        $query = "INSERT INTO cajas (usuario_id, monto_apertura, estado, fecha_apertura) 
+                  VALUES (:uid, :monto, 1, datetime('now', 'localtime'))";
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':uid', $usuario_id);
         $stmt->bindParam(':monto', $monto_inicial);
@@ -31,44 +32,55 @@ class Caja {
     }
 
     public function calcularTotales($id_caja) {
+        // Recuperar los datos de la caja para auditar por rango de tiempo exacto del turno
+        $qCaja = "SELECT fecha_apertura, usuario_id FROM cajas WHERE id = :id";
+        $stC = $this->conn->prepare($qCaja);
+        $stC->execute([':id' => $id_caja]);
+        $cData = $stC->fetch(PDO::FETCH_ASSOC);
+        
+        $fApertura = $cData['fecha_apertura'] ?? date('Y-m-d H:i:s');
+        $uId = $cData['usuario_id'] ?? 0;
+
+        // Total global de ventas del turno
         $sqlTotal = "SELECT COALESCE(SUM(total), 0) as total FROM ventas
-                     WHERE caja_id = :caja_id AND estado = 1";
+                     WHERE usuario_id = :uid AND fecha >= :fap AND estado = 1";
         $stmt = $this->conn->prepare($sqlTotal);
-        $stmt->bindParam(':caja_id', $id_caja);
-        $stmt->execute();
+        $stmt->execute([':uid' => $uId, ':fap' => $fApertura]);
         $total_global = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
+        // Efectivo
         $sqlEfectivo = "SELECT COALESCE(SUM(total), 0) as total FROM ventas
-                        WHERE caja_id = :caja_id AND estado = 1 AND metodo_pago = 'EFECTIVO'";
+                        WHERE usuario_id = :uid AND fecha >= :fap AND estado = 1 AND metodo_pago = 'EFECTIVO'";
         $stmt = $this->conn->prepare($sqlEfectivo);
-        $stmt->bindParam(':caja_id', $id_caja);
-        $stmt->execute();
+        $stmt->execute([':uid' => $uId, ':fap' => $fApertura]);
         $total_efectivo = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
+        // Yape / Plin
         $sqlYape = "SELECT COALESCE(SUM(total), 0) as total FROM ventas
-                    WHERE caja_id = :caja_id AND estado = 1 AND metodo_pago = 'YAPE'";
+                    WHERE usuario_id = :uid AND fecha >= :fap AND estado = 1 AND metodo_pago = 'YAPE'";
         $stmt = $this->conn->prepare($sqlYape);
-        $stmt->bindParam(':caja_id', $id_caja);
-        $stmt->execute();
+        $stmt->execute([':uid' => $uId, ':fap' => $fApertura]);
         $total_yape = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
+        // Tarjeta
         $sqlTarjeta = "SELECT COALESCE(SUM(total), 0) as total FROM ventas
-                       WHERE caja_id = :caja_id AND estado = 1 AND metodo_pago = 'TARJETA'";
+                       WHERE usuario_id = :uid AND fecha >= :fap AND estado = 1 AND metodo_pago = 'TARJETA'";
         $stmt = $this->conn->prepare($sqlTarjeta);
-        $stmt->bindParam(':caja_id', $id_caja);
-        $stmt->execute();
+        $stmt->execute([':uid' => $uId, ':fap' => $fApertura]);
         $total_tarjeta = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
-        $sqlGastos = "SELECT COALESCE(SUM(monto), 0) as total FROM gastos WHERE caja_id = :id";
+        // Gastos vinculados
+        $sqlGastos = "SELECT COALESCE(SUM(monto), 0) as total FROM gastos 
+                      WHERE usuario_id = :uid AND fecha >= :fap";
         $stmt = $this->conn->prepare($sqlGastos);
-        $stmt->bindParam(':id', $id_caja);
-        $stmt->execute();
+        $stmt->execute([':uid' => $uId, ':fap' => $fApertura]);
         $total_gastos = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
-        $sqlCantidad = "SELECT COUNT(*) as total FROM ventas WHERE caja_id = :caja_id AND estado = 1";
+        // Cantidad de comprobantes emitidos
+        $sqlCantidad = "SELECT COUNT(*) as total FROM ventas 
+                        WHERE usuario_id = :uid AND fecha >= :fap AND estado = 1";
         $stmt = $this->conn->prepare($sqlCantidad);
-        $stmt->bindParam(':caja_id', $id_caja);
-        $stmt->execute();
+        $stmt->execute([':uid' => $uId, ':fap' => $fApertura]);
         $cantidad_tickets = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
         return [
@@ -84,23 +96,23 @@ class Caja {
 
     public function cerrar($id_caja, $total_ventas, $monto_final) {
         $query = "UPDATE cajas 
-                  SET fecha_cierre = CURRENT_TIMESTAMP, 
-                      monto_final  = :final,
-                      total_ventas = :tv,
+                  SET fecha_cierre = datetime('now', 'localtime'), 
+                      monto_cierre  = :final,
+                      monto_apertura = monto_apertura, 
                       estado       = 0 
                   WHERE id = :id";
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':final', $monto_final);
-        $stmt->bindParam(':tv',    $total_ventas);
         $stmt->bindParam(':id',    $id_caja);
         return $stmt->execute();
     }
 
     public function getHistorial($fecha_inicio, $fecha_fin) {
+        // Adaptación de subconsultas a SQLite usando la relación de tiempos y auditoría de usuario
         $sql = "SELECT c.*, u.nombre as cajero,
-                    (SELECT COALESCE(SUM(v.total),0) FROM ventas v WHERE v.caja_id = c.id AND v.estado = 1) as ventas_turno,
-                    (SELECT COALESCE(SUM(g.monto),0) FROM gastos g WHERE g.caja_id = c.id) as gastos_turno,
-                    (SELECT COUNT(*) FROM ventas v WHERE v.caja_id = c.id AND v.estado = 1) as num_tickets
+                    (SELECT COALESCE(SUM(v.total), 0) FROM ventas v WHERE v.usuario_id = c.usuario_id AND v.fecha >= c.fecha_apertura AND v.estado = 1) as ventas_turno,
+                    (SELECT COALESCE(SUM(g.monto), 0) FROM gastos g WHERE g.usuario_id = c.usuario_id AND g.fecha >= c.fecha_apertura) as gastos_turno,
+                    (SELECT COUNT(*) FROM ventas v WHERE v.usuario_id = c.usuario_id AND v.fecha >= c.fecha_apertura AND v.estado = 1) as num_tickets
                 FROM cajas c
                 JOIN usuarios u ON c.usuario_id = u.id_usuario
                 WHERE date(c.fecha_apertura) BETWEEN :f1 AND :f2

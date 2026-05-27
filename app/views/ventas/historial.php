@@ -1,155 +1,166 @@
 <?php require_once '../app/views/includes/header.php'; ?>
 <?php require_once '../app/views/includes/sidebar.php'; ?>
 
-<div class="content">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="bi bi-receipt"></i> Historial de Ventas</h2>
-        <a href="index.php?route=exportar_historial<?php echo !empty($_GET['f_ini']) ? '&f_ini=' . $_GET['f_ini'] : ''; ?><?php echo !empty($_GET['f_fin']) ? '&f_fin=' . $_GET['f_fin'] : ''; ?>" class="btn btn-success">
-            <i class="bi bi-file-earmark-excel"></i> Exportar Excel
-        </a>
+<div class="content-principal-contenedor pt-4" style="min-height: 100vh; background-color: #F8FAFC; font-family: 'Segoe UI', sans-serif;">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-light">
+        <div>
+            <h2 class="mb-0 text-uppercase tracking-wider fs-4" style="color: #1E3A5F; font-weight: 600;">
+                <i class="bi bi-clock-history me-2 text-primary"></i> Historial de Ventas y CPE
+            </h2>
+            <small class="text-muted">Registro centralizado de órdenes de servicio facturadas, comprobantes electrónicos y estados SUNAT.</small>
+        </div>
+        <div class="text-end">
+            <a href="index.php?route=nueva_venta" class="btn btn-primary fw-bold px-3 py-2 d-inline-flex align-items-center gap-2 shadow-sm mb-2" style="background-color: #2563EB; border-color: #2563EB; border-radius: 8px; text-decoration: none; color: white;">
+                <i class="bi bi-cart-plus-fill"></i> Nueva Operación
+            </a><br>
+            <a href="index.php?route=exportar_ventas_excel" class="btn btn-success fw-bold shadow-sm d-inline-flex align-items-center gap-2" style="border-radius: 8px; font-size: 14px; background-color: #10B981; border-color: #10B981; text-decoration: none; color: white; padding: 6px 12px;">
+                <i class="bi bi-file-earmark-excel-fill"></i> Exportar a Excel
+            </a>
+        </div>
     </div>
 
-    <!-- FILTROS -->
-    <div class="card shadow-sm mb-3">
-        <div class="card-body bg-light py-2">
-            <form action="index.php" method="GET" class="row g-2 align-items-end">
-                <input type="hidden" name="route" value="historial_ventas">
-                <div class="col-md-3">
-                    <label class="form-label small fw-bold mb-1">Desde:</label>
-                    <input type="date" name="f_ini" class="form-control form-control-sm" value="<?php echo $_GET['f_ini'] ?? ''; ?>">
+    <div class="card border-0 shadow-sm mb-4 bg-white" style="border-radius: 12px; border: 1px solid #E2E8F0 !important;">
+        <div class="card-body p-3.5">
+            <form action="index.php?route=historial_ventas" method="GET" class="row align-items-end g-3">
+                <div class="col-12 col-md-4">
+                    <label class="form-label text-dark fw-semibold small mb-1"><i class="bi bi-calendar-event text-primary me-1"></i> Desde el Día:</label>
+                    <input type="date" class="form-control fw-medium" name="fecha_inicio" value="<?php echo $fecha_inicio; ?>" required style="height: 40px; border-radius: 8px;">
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small fw-bold mb-1">Hasta:</label>
-                    <input type="date" name="f_fin" class="form-control form-control-sm" value="<?php echo $_GET['f_fin'] ?? ''; ?>">
+                <div class="col-12 col-md-4">
+                    <label class="form-label text-dark fw-semibold small mb-1"><i class="bi bi-calendar-check text-success me-1"></i> Hasta el Día:</label>
+                    <input type="date" class="form-control fw-medium" name="fecha_fin" value="<?php echo $fecha_fin; ?>" required style="height: 40px; border-radius: 8px;">
                 </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary btn-sm w-100">Filtrar</button>
-                </div>
-                <div class="col-md-2">
-                    <a href="index.php?route=historial_ventas" class="btn btn-outline-secondary btn-sm w-100">Ver Todo</a>
+                <div class="col-12 col-md-4">
+                    <input type="hidden" name="route" value="historial_ventas">
+                    <button type="submit" class="btn btn-dark fw-bold w-100 shadow-sm" style="height: 40px; border-radius: 8px;">
+                        <i class="bi bi-search me-1"></i> Filtrar Historial
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <?php if(isset($_GET['msg']) && $_GET['msg']=='anulado'): ?>
-    <div class="alert alert-success alert-dismissible fade show">✅ Venta anulada y stock devuelto.
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-    <?php endif; ?>
-
-    <!-- TABLA -->
-    <div class="card shadow-sm">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-dark">
-                    <tr>
-                        <th># Ticket</th>
-                        <th>Fecha</th>
-                        <th>Cliente</th>
-                        <th>Vendedor</th>
-                        <th>Método</th>
-                        <th class="text-end">IGV</th>
-                        <th class="text-end">Total</th>
-                        <th>Estado</th>
-                        <th>SUNAT</th>
-                        <th>Acciones</th>
+    <div class="card border-0 shadow-sm bg-white p-3" style="border-radius: 12px; border: 1px solid #E2E8F0 !important;">
+        <div class="table-responsive">
+            <table id="tablaHistorialVentas" class="table align-middle mb-0" style="width: 100%; font-size: 14px;">
+                <thead class="table-light" style="border-bottom: 2px solid #E2E8F0;">
+                    <tr style="color: #475569; font-weight: 600;">
+                        <th class="py-3 ps-3" style="width: 70px;">ID</th>
+                        <th class="py-3">Fecha / Hora</th>
+                        <th class="py-3">Cliente / Razón Social</th>
+                        <th class="py-3">Tipo</th>
+                        <th class="py-3">Método Pago</th>
+                        <th class="py-3 text-end">Monto Total</th>
+                        <th class="py-3 text-center">Estado de Orden</th>
+                        <th class="py-3 text-center pe-3" style="width: 130px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php 
-                    $total_mostrado = 0;
-                    foreach ($ventas as $v): 
-                        $anulado = ($v['estado'] == 0);
-                        if(!$anulado) $total_mostrado += $v['total'];
-                    ?>
-                    <tr class="<?php echo $anulado ? 'table-danger' : ''; ?>">
-                        <td class="fw-bold">
-                            <?php echo str_pad($v['id'], 5, "0", STR_PAD_LEFT); ?><br>
-                            <small class="text-muted"><?php echo $v['serie'] . '-' . $v['correlativo']; ?></small>
-                        </td>
-                        <td><?php echo date("d/m/Y H:i", strtotime($v['fecha'])); ?></td>
-                        <td>
-                            <?php echo htmlspecialchars($v['cliente_nombre'] ?? 'General'); ?><br>
-                            <small class="text-muted"><?php echo $v['cliente_tipo_doc'] . ': ' . $v['cliente_num_doc']; ?></small>
-                        </td>
-                        <td><?php echo htmlspecialchars($v['vendedor']); ?></td>
-                        <td>
-                            <?php 
-                            $colores = ['EFECTIVO'=>'success','YAPE'=>'info','TARJETA'=>'warning'];
-                            $col = $colores[$v['metodo_pago']] ?? 'secondary';
-                            ?>
-                            <span class="badge bg-<?php echo $col; ?>"><?php echo $v['metodo_pago']; ?></span>
-                        </td>
-                        <td class="text-end small">
-                            S/ <?php echo number_format($v['igv'] ?? 0, 2); ?>
-                        </td>
-                        <td class="text-end fw-bold <?php echo $anulado ? 'text-decoration-line-through text-muted' : ''; ?>">
-                            S/ <?php echo number_format($v['total'], 2); ?>
-                        </td>
-                        <td>
-                            <?php if($anulado): ?>
-                                <span class="badge bg-danger">ANULADO</span>
-                            <?php else: ?>
-                                <span class="badge bg-success">ACTIVO</span>
-                            <?php endif; ?>
-                        </td>
-                        
-                        <!-- COLUMNA SUNAT -->
-                        <td>
-                            <?php 
-                            $estado_sunat = $v['estado_sunat'] ?? 'REGISTRADO';
-                            ?>
-                            <?php if ($estado_sunat == 'ACEPTADO'): ?>
-                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Aceptado</span>
-                            <?php elseif ($estado_sunat == 'RECHAZADO'): ?>
-                                <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Rechazado</span>
-                                <a href="index.php?route=reenviar_sunat&id=<?= $v['id'] ?>" class="btn btn-sm btn-warning mt-1 d-block" title="Reintentar envío a SUNAT">
-                                    🔄 Reenviar
-                                </a>
-                            <?php elseif ($estado_sunat == 'ENVIADO'): ?>
-                                <span class="badge bg-info"><i class="bi bi-send"></i> Enviado</span>
-                            <?php else: ?>
-                                <span class="badge bg-secondary"><i class="bi bi-clock"></i> Registrado</span>
-                                <a href="index.php?route=enviar_sunat&id=<?= $v['id'] ?>" class="btn btn-sm btn-primary mt-1 d-block">
-                                    🚀 Enviar a SUNAT
-                                </a>
-                            <?php endif; ?>
-                        </td>
-                        
-                        <td>
-                            <a href="index.php?route=ver_ticket&id=<?php echo $v['id']; ?>" 
-                               class="btn btn-sm btn-outline-dark" target="_blank" title="Ver ticket">
-                                <i class="bi bi-printer"></i>
-                            </a>
-                            <?php if(!$anulado && ($_SESSION['user_rol'] == 'ADMIN')): ?>
-                            <a href="index.php?route=anular_venta&id=<?php echo $v['id']; ?>" 
-                               class="btn btn-sm btn-danger"
-                               onclick="return confirm('⚠️ ¿Anular venta #<?php echo $v['id']; ?>? El stock será devuelto.')">
-                               <i class="bi bi-x-circle"></i>
-                            </a>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                    <?php if(!empty($ventas)): ?>
+                        <?php foreach($ventas as $v): ?>
+                            <tr class="<?php echo ($v['estado'] == 0) ? 'table-danger opacity-75 text-decoration-line-through' : ''; ?>">
+                                <td class="ps-3 fw-bold text-secondary">#<?php echo $v['id']; ?></td>
+                                <td class="text-muted" style="font-size: 13px;">
+                                    <?php echo date("d/m/Y H:i", strtotime($v['fecha'])); ?>
+                                </td>
+                                <td>
+                                    <div class="fw-bold" style="color: #1E3A5F; font-size: 13.5px;">
+                                        <?php echo htmlspecialchars($v['cliente_nombre'] ?? 'Público General'); ?>
+                                    </div>
+                                    <small class="text-muted font-monospace" style="font-size: 11px;">Doc: <?php echo htmlspecialchars($v['cliente_num_doc'] ?? '-'); ?></small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border fw-medium px-2 py-1" style="font-size: 11px;">
+                                        <?php echo ($v['tipo_comprobante'] == '01') ? 'FAV / FACTURA' : 'BOL / BOLETA'; ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php 
+                                    $coloresPago = ['EFECTIVO'=>'success','YAPE'=>'info','TARJETA'=>'warning','PLIN'=>'info'];
+                                    $metodo_clean = strtoupper(trim($v['metodo_pago']));
+                                    $cPago = $coloresPago[$metodo_clean] ?? 'secondary';
+                                    ?>
+                                    <span class="badge bg-light text-<?php echo $cPago; ?> border border-<?php echo $cPago; ?>" style="font-size: 11px; font-weight: 600;">
+                                        <?php echo $metodo_clean; ?>
+                                    </span>
+                                </td>
+                                <td class="text-end fw-bold text-dark fs-6">
+                                    S/ <?php echo number_format($v['total'], 2); ?>
+                                </td>
+                                <td class="text-center">
+                                    <?php if(($v['estado'] ?? 1) == 0): ?>
+                                        <span class="badge bg-danger px-3 py-1 fw-bold">ANULADO</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-success text-white px-3 py-1 fw-bold">
+                                            <i class="bi bi-check-circle-fill me-1"></i>EMITIDO
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-center pe-3">
+                                    <div class="btn-group" role="group">
+                                        <a href="index.php?route=ver_ticket&id=<?php echo $v['id']; ?>" target="_blank" class="btn btn-sm btn-outline-secondary border-0 text-primary" title="Imprimir Ticket A4 / Térmico" style="font-size: 16px;">
+                                            <i class="bi bi-printer-fill"></i>
+                                        </a>
+                                        
+                                        <?php if($v['estado'] == 1): ?>
+                                            <a href="#" class="btn btn-sm btn-outline-secondary border-0 text-danger" title="Anular Orden y Devolver Stock" style="font-size: 16px;" onclick="confirmarAnulacionVenta(<?php echo $v['id']; ?>, '<?php echo htmlspecialchars($v['cliente_nombre'] ?? 'Público General'); ?>', '<?php echo number_format($v['total'], 2); ?>')">
+                                                <i class="bi bi-x-circle-fill"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <button class="btn btn-sm btn-outline-secondary border-0 text-muted" disabled style="font-size: 16px;">
+                                                <i class="bi bi-lock-fill opacity-25"></i>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
-                <?php if(!empty($ventas)): ?>
-                <tfoot class="table-dark">
-                    <tr>
-                        <td colspan="6" class="text-end fw-bold">TOTAL ACTIVAS:</td>
-                        <td class="text-end fw-bold">S/ <?php echo number_format($total_mostrado, 2); ?></td>
-                        <td colspan="3"></td>
-                    </tr>
-                </tfoot>
-                <?php endif; ?>
             </table>
-            </div>
         </div>
     </div>
-    <?php if(empty($ventas)): ?>
-    <div class="text-center text-muted mt-4"><i class="bi bi-inbox fs-1"></i><p>No hay ventas registradas.</p></div>
-    <?php endif; ?>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+$(document).ready(function() {
+    $('#tablaHistorialVentas').DataTable({
+        "language": {
+            "url": "https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json"
+        },
+        "order": [[ 0, "desc" ]],
+        "pageLength": 10,
+        "columnDefs": [
+            { "orderData": [0], "targets": [0] }
+        ],
+        "drawCallback": function() {
+            $('.dataTables_wrapper .dataTables_length select, .dataTables_wrapper .dataTables_filter input').addClass('form-control d-inline-block w-auto py-1 px-2 small ms-2');
+            $('.dataTables_wrapper .dataTables_filter input').attr('placeholder', 'Buscar por cliente...');
+            $('.dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_paginate').addClass('text-muted small mt-3');
+        }
+    });
+});
 
+function confirmarAnulacionVenta(id, cliente, monto) {
+    Swal.fire({
+        title: '¿Anular este comprobante?',
+        text: `Se dará de baja la orden #${id} del cliente "${cliente}" por S/ ${monto}. Esta acción reincorporará los aceites y filtros de vuelta al stock del almacén de forma automática.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#EF4444',
+        cancelButtonColor: '#64748B',
+        confirmButtonText: 'Sí, proceder a anular',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = `index.php?route=anular_venta&id=${id}`;
+        }
+    });
+}
+</script>
+
+<style>
+.hover-primary:hover { color: #2563EB !important; }
+</style>
 <?php require_once '../app/views/includes/footer.php'; ?>

@@ -1,16 +1,25 @@
 <?php
 require_once '../app/models/Venta.php';
 require_once '../app/models/Caja.php';
+require_once '../app/models/Cliente.php';
+require_once '../app/models/Vehiculo.php';
+require_once '../app/models/Servicio.php';
 
 class VentaController {
     private $db;
     private $ventaModel;
     private $cajaModel;
+    private $clienteModel;
+    private $vehiculoModel;
+    private $servicioModel;
 
     public function __construct($db) {
-        $this->db         = $db;
-        $this->ventaModel = new Venta($db);
-        $this->cajaModel  = new Caja($db);
+        $this->db            = $db;
+        $this->ventaModel    = new Venta($db);
+        $this->cajaModel     = new Caja($db);
+        $this->clienteModel  = new Cliente($db);
+        $this->vehiculoModel = new Vehiculo($db);
+        $this->servicioModel = new Servicio($db);
         if (session_status() == PHP_SESSION_NONE) session_start();
         date_default_timezone_set('America/Lima');
     }
@@ -21,14 +30,14 @@ class VentaController {
         }
         $caja = $this->cajaModel->obtenerCajaAbierta($_SESSION['user_id']);
         if (!$caja) {
-            echo "<script>alert('⚠️ Debes APERTURAR CAJA antes de vender.'); window.location.href='index.php?route=caja_apertura';</script>";
+            echo "<script>alert('⚠️ Debes APERTURAR CAJA antes de realizar operaciones de venta.'); window.location.href='index.php?route=caja_apertura';</script>";
             exit;
         }
         $fecha_apertura = date('Y-m-d', strtotime($caja['fecha_apertura']));
         $hoy = date('Y-m-d');
         if ($fecha_apertura < $hoy) {
             $this->cajaModel->cerrar($caja['id'], 0, 0);
-            echo "<script>alert('ℹ️ Se cerró automáticamente una caja del día anterior. Abre una nueva caja.'); window.location.href='index.php?route=caja_apertura';</script>";
+            echo "<script>alert('ℹ️ Se cerró automáticamente la caja del día anterior. Abre una nueva caja.'); window.location.href='index.php?route=caja_apertura';</script>";
             exit;
         }
         return $caja;
@@ -39,12 +48,16 @@ class VentaController {
         
         $termino = isset($_GET['buscar']) ? trim($_GET['buscar']) : '';
         
-        // Si hay término de búsqueda, buscar. Si no, cargar todos los disponibles
         if (!empty($termino)) {
-            $resultados = $this->ventaModel->buscarProducto($termino);
+            $productos = $this->ventaModel->buscarProducto($termino);
         } else {
-            $resultados = $this->ventaModel->listarProductosDisponibles(24);
+            $productos = $this->ventaModel->listarProductosDisponibles(24);
         }
+
+    
+        $categorias = $this->ventaModel->listarCategorias();
+        $serviciosManoObra = $this->servicioModel->listar();
+        $clientes = $this->clienteModel->listar();
         
         $total_venta = 0;
         if (isset($_SESSION['carrito'])) {
@@ -56,18 +69,23 @@ class VentaController {
         require_once '../app/views/ventas/nueva.php';
     }
 
+    private function requireLogin() {
+        if (!isset($_SESSION['user_id'])) {
+            header("Location: index.php?route=login"); exit;
+        }
+    }
+
     public function agregar() {
         $this->verificarPermisoDeVenta();
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            $id       = intval($_POST['id_variante']);
-            $nombre   = htmlspecialchars($_POST['nombre_completo']);
+            $id       = intval($_POST['id_producto']);
+            $tipo     = $_POST['tipo_item'] ?? 'PRODUCTO'; 
+            $nombre   = htmlspecialchars($_POST['nombre']);
             $precio   = floatval($_POST['precio']);
             $cantidad = intval($_POST['cantidad'] ?? 1);
             
-            if ($cantidad < 1) {
-                $cantidad = 1;
-            }
+            if ($cantidad < 1) $cantidad = 1;
 
             if (!isset($_SESSION['carrito'])) {
                 $_SESSION['carrito'] = [];
@@ -75,7 +93,7 @@ class VentaController {
 
             $encontrado = false;
             foreach ($_SESSION['carrito'] as $key => $item) {
-                if ($item['id'] == $id) {
+                if (($item['tipo'] ?? 'PRODUCTO') == $tipo && $item['id'] == $id) {
                     $_SESSION['carrito'][$key]['cantidad'] += $cantidad;
                     $_SESSION['carrito'][$key]['subtotal'] = $_SESSION['carrito'][$key]['cantidad'] * $_SESSION['carrito'][$key]['precio'];
                     $encontrado = true;
@@ -86,6 +104,7 @@ class VentaController {
             if (!$encontrado) {
                 $_SESSION['carrito'][] = [
                     'id'       => $id,
+                    'tipo'     => $tipo,
                     'nombre'   => $nombre,
                     'precio'   => $precio,
                     'cantidad' => $cantidad,
@@ -94,7 +113,7 @@ class VentaController {
             }
         }
         
-        $search = isset($_POST['search_term']) ? $_POST['search_term'] : '';
+        $search = $_POST['search_term'] ?? '';
         header("Location: index.php?route=nueva_venta&buscar=" . urlencode($search));
         exit;
     }
@@ -106,7 +125,7 @@ class VentaController {
                 array_splice($_SESSION['carrito'], $idx, 1);
             }
         }
-        $search = isset($_GET['buscar']) ? $_GET['buscar'] : '';
+        $search = $_GET['buscar'] ?? '';
         header("Location: index.php?route=nueva_venta&buscar=" . urlencode($search));
         exit;
     }
@@ -127,16 +146,19 @@ class VentaController {
         foreach ($_SESSION['carrito'] as $item) $total_carrito += $item['subtotal'];
 
         $tipo_comprobante = $_POST['tipo_comprobante'] ?? '03';
-        $cliente_tipo_doc = $_POST['cliente_tipo_doc'] ?? '1';
-        $cliente_num_doc  = htmlspecialchars($_POST['cliente_num_doc'] ?? '00000000');
-        $cliente_nombre   = htmlspecialchars($_POST['cliente_nombre'] ?? 'Público General');
+        $id_cliente       = intval($_POST['id_cliente'] ?? 0);
+        $id_vehiculo      = !empty($_POST['id_vehiculo']) ? intval($_POST['id_vehiculo']) : null;
+        $km_actual        = !empty($_POST['km_actual']) ? floatval($_POST['km_actual']) : 0.00;
         $metodo_pago      = $_POST['metodo_pago'] ?? 'EFECTIVO';
+        $descuento        = floatval($_POST['descuento'] ?? 0.00);
 
-        // Validar documento mínimo
-        if ($cliente_num_doc == '-' || empty($cliente_num_doc)) {
-            $cliente_num_doc = '00000000';
-            $cliente_nombre = 'Público General';
-        }
+        $total_final = $total_carrito - $descuento;
+        if($total_final < 0) $total_final = 0;
+
+        $clienteData = $this->clienteModel->getById($id_cliente);
+        $cliente_tipo_doc = $clienteData['tipo_documento'] ?? '1';
+        $cliente_num_doc  = $clienteData['numero_documento'] ?? '00000000';
+        $cliente_nombre   = $clienteData['nombre'] ?? 'Público General';
 
         $resultado = $this->ventaModel->registrarVenta(
             $_SESSION['user_id'],
@@ -144,257 +166,302 @@ class VentaController {
             $cliente_tipo_doc,
             $cliente_num_doc,
             $cliente_nombre,
-            $total_carrito,
+            $total_final,
             $_SESSION['carrito'],
             $metodo_pago
         );
 
         if ($resultado['ok']) {
-            $_SESSION['carrito'] = [];
             $id_venta = $resultado['id'];
 
-            // Intentar SUNAT solo si hay configuración
+            // CONDICIÓN INTELIGENTE DE LUBRICENTRO AUTOMATIZADA
+            if (!empty($id_vehiculo)) {
+                $this->vehiculoModel->actualizarKilometraje($id_vehiculo, $km_actual);
+                $proximo_cambio = $km_actual + 5000;
+
+                // Forzamos el guardado con la fecha de hoy en formato nativo SQLite (YYYY-MM-DD HH:MM:SS)
+                $stmtH = $this->db->prepare("INSERT INTO servicios_realizados 
+                    (id_venta, id_vehiculo, id_servicio, observaciones, kilometraje_actual, proximo_cambio, fecha_registro) 
+                    VALUES (:id_v, :id_veh, :id_ser, :obs, :km_act, :prox, datetime('now', 'localtime'))");
+                
+                foreach ($_SESSION['carrito'] as $item) {
+                    // Si se vende un servicio o un ítem relacionado, se guarda en el historial clínico del auto
+                    $id_servicio_relacionado = ($item['tipo'] === 'SERVICIO') ? $item['id'] : 1; 
+                    
+                    $stmtH->execute([
+                        ':id_v'   => $id_venta,
+                        ':id_veh' => $id_vehiculo,
+                        ':id_ser' => $id_servicio_relacionado,
+                        ':obs'    => 'Mantenimiento de fluidos: Venta registrada de ' . $item['nombre'],
+                        ':km_act' => $km_actual,
+                        ':prox'   => $proximo_cambio
+                    ]);
+                }
+            }
+
+            $_SESSION['carrito'] = [];
+
+            $stmtUpd = $this->db->prepare("UPDATE ventas SET estado_sunat = 'LOCAL' WHERE id = :id");
+            $stmtUpd->execute([':id' => $id_venta]);
+
+            $alerta = '✅ Venta registrada correctamente. Comprobante guardado en modo local.';
+            /*  
             require_once '../app/sunat/SunatHelper.php';
             $ventaData = $this->ventaModel->getVentaById($id_venta);
             $detallesData = $this->ventaModel->getDetalleVenta($id_venta);
             
-            $stmtCfg = $this->db->query("SELECT 
-            ruc,
-            razon_social as nombre_empresa,
-            direccion,
-            telefono,
-            email
-            FROM configuracion_empresa LIMIT 1");
+            $stmtCfg = $this->db->query("SELECT ruc, razon_social as nombre_empresa, direccion, telefono, email FROM configuracion_empresa LIMIT 1");
             $configData = $stmtCfg->fetch(PDO::FETCH_ASSOC);
 
             $sunatRes = SunatHelper::emitirComprobante($ventaData, $detallesData, $configData);
             
-            // Actualizar estado_sunat
             $stmtUpd = $this->db->prepare("UPDATE ventas SET estado_sunat = :est WHERE id = :id");
             $stmtUpd->execute([':est' => $sunatRes['estado_sunat'], ':id' => $id_venta]);
 
-            // Mensaje según resultado
-            if ($sunatRes['xml_generado']) {
-                $alerta = $sunatRes['ok'] 
-                    ? '✅ Venta registrada y enviada a SUNAT' 
-                    : '⚠️ Venta registrada. SUNAT: ' . $sunatRes['msg'];
-            } else {
-                $alerta = '✅ Venta registrada correctamente. ' . $sunatRes['msg'];
-            }
+            $alerta = $sunatRes['xml_generado'] 
+                ? ($sunatRes['ok'] ? '✅ Comprobante enviado y aprobado por SUNAT' : '⚠️ Registrado. SUNAT: ' . $sunatRes['msg'])
+                : '✅ Ticket registrado de forma interna local.';*/
 
             echo "<script>
                 alert('$alerta');
-                var imprimir = confirm('¿Imprimir Ticket?');
-                if (imprimir) { window.open('index.php?route=ver_ticket&id=$id_venta', '_blank'); }
-                window.location.href = 'index.php?route=nueva_venta';
+                if(confirm('¿Desea imprimir el Ticket de servicio técnico?')) {
+                    window.location.href = 'index.php?route=ver_ticket&id=$id_venta&print=1';
+                } else {
+                    window.location.href = 'index.php?route=nueva_venta';
+                }
             </script>";
         } else {
             $msg = $resultado['msg'] ?? 'Error desconocido';
-            echo "<script>alert('❌ Error de BD: $msg'); window.history.back();</script>";
+            echo "<script>alert('❌ Error de Base de Datos: $msg'); window.history.back();</script>";
         }
     }
+
+
+
 
     public function historial() {
-        if (!isset($_SESSION['user_id'])) {
-            header("Location: index.php?route=login"); exit;
+        if (session_status() == PHP_SESSION_NONE) session_start();
+        if (!isset($_SESSION['user_id'])) { 
+            header("Location: index.php"); 
+            exit; 
         }
-        $filtro = [];
-        if (!empty($_GET['f_ini'])) $filtro['fecha_inicio'] = $_GET['f_ini'];
-        if (!empty($_GET['f_fin'])) $filtro['fecha_fin']    = $_GET['f_fin'];
-        $ventas = $this->ventaModel->listarVentas($filtro);
+
+        // Obtener fechas (GET o POST)
+        $fecha_inicio = $_GET['fecha_inicio'] ?? $_POST['fecha_inicio'] ?? date('Y-m-d');
+        $fecha_fin    = $_GET['fecha_fin'] ?? $_POST['fecha_fin'] ?? date('Y-m-d');
+
+        $ventas = [];
+        try {
+            // Consulta con filtro de fechas CORRECTO
+            $query = "
+                SELECT 
+                    v.id,
+                    v.fecha,
+                    v.total,
+                    v.metodo_pago,
+                    v.estado,
+                    v.tipo_comprobante,
+                    v.cliente_nombre,
+                    v.cliente_num_doc
+                FROM ventas v
+                WHERE DATE(v.fecha) BETWEEN :inicio AND :fin
+                ORDER BY v.fecha DESC, v.id DESC
+            ";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(':inicio', $fecha_inicio);
+            $stmt->bindParam(':fin', $fecha_fin);
+            $stmt->execute();
+            $ventas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+        } catch (PDOException $e) {
+            error_log("Error en historial: " . $e->getMessage());
+            // Fallback si hay error
+            $stmt = $this->db->query("SELECT * FROM ventas ORDER BY id DESC LIMIT 50");
+            $ventas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
         require_once '../app/views/ventas/historial.php';
-    }
-    public function exportarHistorial() {
-        if (!isset($_SESSION['user_id'])) {
-            header("Location: index.php?route=login"); exit;
-        }
-        
-        $filtro = [];
-        if (!empty($_GET['f_ini'])) $filtro['fecha_inicio'] = $_GET['f_ini'];
-        if (!empty($_GET['f_fin'])) $filtro['fecha_fin']    = $_GET['f_fin'];
-        $ventas = $this->ventaModel->listarVentas($filtro);
-
-        header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-        header('Content-Disposition: attachment; filename=ventas_' . date('Ymd_His') . '.xls');
-        header('Pragma: no-cache');
-        header('Expires: 0');
-
-        echo chr(0xEF) . chr(0xBB) . chr(0xBF);
-
-        echo '<table border="1">';
-        echo '<tr style="background-color:#4472C4;color:white;font-weight:bold;">';
-        echo '<th>ID</th>';
-        echo '<th>Serie-Correlativo</th>';
-        echo '<th>Fecha</th>';
-        echo '<th>Cliente</th>';
-        echo '<th>Doc Cliente</th>';
-        echo '<th>Vendedor</th>';
-        echo '<th>Método Pago</th>';
-        echo '<th>IGV</th>';
-        echo '<th>Total</th>';
-        echo '<th>Estado</th>';
-        echo '<th>Estado SUNAT</th>';
-        echo '</tr>';
-
-        $total_general = 0;
-        foreach ($ventas as $v) {
-            $anulado = ($v['estado'] == 0);
-            if (!$anulado) $total_general += $v['total'];
-
-            echo '<tr' . ($anulado ? ' style="background-color:#ffcccc;"' : '') . '>';
-            echo '<td>' . $v['id'] . '</td>';
-            echo '<td>' . $v['serie'] . '-' . $v['correlativo'] . '</td>';
-            echo '<td>' . date("d/m/Y H:i", strtotime($v['fecha'])) . '</td>';
-            echo '<td>' . htmlspecialchars($v['cliente_nombre'] ?? 'General') . '</td>';
-            echo '<td>' . ($v['cliente_tipo_doc'] ?? '') . ': ' . ($v['cliente_num_doc'] ?? '') . '</td>';
-            echo '<td>' . htmlspecialchars($v['vendedor'] ?? '') . '</td>';
-            echo '<td>' . ($v['metodo_pago'] ?? '') . '</td>';
-            echo '<td style="text-align:right;">S/ ' . number_format($v['igv'] ?? 0, 2) . '</td>';
-            echo '<td style="text-align:right;">S/ ' . number_format($v['total'], 2) . '</td>';
-            echo '<td>' . ($anulado ? 'ANULADO' : 'ACTIVO') . '</td>';
-            echo '<td>' . ($v['estado_sunat'] ?? 'REGISTRADO') . '</td>';
-            echo '</tr>';
-        }
-
-        echo '<tr style="background-color:#70AD47;color:white;font-weight:bold;">';
-        echo '<td colspan="8" style="text-align:right;">TOTAL ACTIVAS:</td>';
-        echo '<td style="text-align:right;">S/ ' . number_format($total_general, 2) . '</td>';
-        echo '<td colspan="2"></td>';
-        echo '</tr>';
-
-        echo '</table>';
-        exit;
     }
 
     public function ver_ticket() {
-        if (!isset($_GET['id'])) { header("Location: index.php?route=nueva_venta"); exit; }
-        $id_venta = intval($_GET['id']);
-        $venta    = $this->ventaModel->getVentaById($id_venta);
-        $detalles = $this->ventaModel->getDetalleVenta($id_venta);
-        if (!$venta) { echo "Ticket no encontrado."; exit; }
+        $this->requireLogin(); 
+        if (!isset($_GET['id'])) {
+            header("Location: index.php?route=historial_ventas"); exit;
+        }
+        
+        $venta = $this->ventaModel->getVentaById($_GET['id']);
+        $detalles = $this->ventaModel->getDetalleVenta($_GET['id']);
+        
+        // Seleccionamos los campos en un orden fijo para no depender de los nombres de columna
+        $stmtCfg = $this->db->query("SELECT ruc, razon_social, direccion, telefono FROM configuracion_empresa LIMIT 1");
+        $empresaRaw = $stmtCfg->fetch(PDO::FETCH_ASSOC);
 
-        // ✅ CAMBIO: Leer de configuracion_empresa (SUNAT) en vez de configuracion
-         $stmtCfg = $this->db->query("SELECT 
-            ruc,
-            razon_social as nombre_empresa,
-            direccion,
-            telefono,
-            email
-            FROM configuracion_empresa LIMIT 1");
-        $config  = $stmtCfg->fetch(PDO::FETCH_ASSOC) ?: [];
+        if ($empresaRaw) {
+            // Convertimos los datos a un array indexado por números (0, 1, 2, 3) para asegurar la lectura
+            $valores = array_values($empresaRaw);
+            $empresa = [
+                'ruc'          => $valores[0] ?? 'N/A',
+                'razon_social' => $valores[1] ?? 'LUBRICENTRO ISMAR',
+                'direccion'    => $valores[2] ?? 'Dirección',
+                'telefono'     => $valores[3] ?? '---'
+            ];
+        } else {
+            // Si la tabla está vacía totalmente
+            $empresa = [
+                'razon_social' => 'LUBRICENTRO ISMAR (Por Defecto)',
+                'ruc'          => '00000000000',
+                'direccion'    => 'Configure la empresa en el menú',
+                'telefono'     => '---'
+            ];
+        }
 
         require_once '../app/views/ventas/ticket.php';
     }
+    public function exportarExcel() {
+        if (session_status() == PHP_SESSION_NONE) session_start();
+        if (!isset($_SESSION['user_id'])) { header("Location: index.php"); exit; }
 
-    public function anular() {
-        if (!isset($_SESSION['user_id'])) { header("Location: index.php?route=login"); exit; }
-        if ($_SESSION['user_rol'] != 'ADMIN') {
-            echo "<script>alert('Solo administradores pueden anular ventas.'); window.history.back();</script>"; exit;
-        }
-        $id = intval($_GET['id']);
-        if ($this->ventaModel->anularVenta($id)) {
-            header("Location: index.php?route=historial_ventas&msg=anulado");
-        } else {
-            echo "<script>alert('Error al anular la venta.'); window.history.back();</script>";
-        }
-    }
-
-    public function consulta_api() {
-        header('Content-Type: application/json');
+        $ventas = [];
         
-        $tipo = $_GET['tipo'] ?? '1'; // 1 = DNI, 6 = RUC
-        $documento = $_GET['doc'] ?? '';
-
-        if (empty($documento)) {
-            echo json_encode(['success' => false, 'msg' => 'Documento vacío']);
-            exit;
-        }
-
-        // --- PASO A: Búsqueda Local (Tu Base de Datos) ---
-        $stmt = $this->db->prepare("SELECT nombre FROM clientes WHERE num_doc = :doc AND tipo_doc = :tipo LIMIT 1");
-        $stmt->execute([':doc' => $documento, ':tipo' => $tipo]);
-        $clienteLocal = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($clienteLocal) {
-            echo json_encode([
-                'success' => true, 
-                'nombre' => $clienteLocal['nombre'],
-                'fuente' => 'LOCAL'
-            ]);
-            exit;
-        }
-
-        // --- PASO B: Búsqueda Externa (API SUNAT/RENIEC) ---
-        $token = 'sk_15529.c10Zj7HbAm9GcBCMfsPxZ4hbdHbjiY4J'; 
-        $url = ($tipo === '1') 
-            ? "https://api.apis.net.pe/v1/dni?numero=" . $documento 
-            : "https://api.apis.net.pe/v1/ruc?numero=" . $documento;
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); 
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer ' . $token]); // Si usas token
-        $respuesta = curl_exec($ch);
-        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($http_status == 200) {
-            $data = json_decode($respuesta, true);
-            $nombre = $data['nombre'];
-
-            // --- PASO C: Registro Automático ---
-            // Guardamos al nuevo cliente para que la próxima vez sea una consulta LOCAL
-            if (!empty($nombre) && $nombre !== '-') { // Validamos que el nombre sea real
-                try {
-                    $ins = $this->db->prepare("INSERT INTO clientes (tipo_doc, num_doc, nombre) VALUES (:t, :n, :nom)");
-                    $ins->execute([
-                        ':t' => $tipo,
-                        ':n' => $documento,
-                        ':nom' => $nombre
-                    ]);
-                } catch (Exception $e) {
-                    // Ignorar si ya existe
-                }
+        // 🔥 INTENTO 1: Probamos con la estructura estándar de ropa ('id')
+        try {
+            $stmt = $this->db->query("
+                SELECT 
+                    v.id AS id, 
+                    v.fecha, 
+                    v.total, 
+                    v.placa,
+                    c.nombre AS cliente_nombre 
+                FROM ventas v
+                LEFT JOIN clientes c ON v.id_cliente = c.id_cliente 
+                ORDER BY v.id DESC
+            ");
+            $ventas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            // 🔥 INTENTO 2: Si falla el primero, probamos con 'id_venta' o variantes
+            try {
+                $stmt = $this->db->query("
+                    SELECT 
+                        v.id_venta AS id, 
+                        v.fecha, 
+                        v.total, 
+                        v.placa,
+                        c.nombre AS cliente_nombre 
+                    FROM ventas v
+                    LEFT JOIN clientes c ON v.id_cliente = c.id_cliente 
+                    ORDER BY v.id_venta DESC
+                ");
+                $ventas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (PDOException $ex) {
+                // 🔥 INTENTO 3: Rescate definitivo sin JOINs por si las columnas de clientes variaron
+                $stmt = $this->db->query("SELECT * FROM ventas ORDER BY 1 DESC");
+                $ventas = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
-
-            echo json_encode([
-                'success' => true, 
-                'nombre' => $nombre,
-                'fuente' => 'API_NUEVO'
-            ]);
-        } else {
-            echo json_encode(['success' => false, 'msg' => 'No encontrado en SUNAT']);
         }
+
+        // Configuración de cabeceras para descarga limpia en Brave
+        header("Content-Type: application/vnd.ms-excel; charset=utf-8");
+        header("Content-Disposition: attachment; filename=Reporte_Ventas_Lubricentro_".date('d-m-Y').".xls");
+        header("Pragma: no-cache");
+        header("Expires: 0");
+
+        // BOM UTF-8 para evitar problemas con eñes, tildes o caracteres de monedas
+        echo chr(0xEF) . chr(0xBB) . chr(0xBF);
+
+        echo "<table border='1'>";
+        echo "<tr style='background-color: #1E3A5F; color: white; font-weight: bold; text-align: center;'>";
+        echo "<th>ID Venta</th>";
+        echo "<th>Fecha / Hora</th>";
+        echo "<th>Cliente Propietario</th>";
+        echo "<th>Placa Vehículo</th>";
+        echo "<th>Total Recaudado</th>";
+        echo "</tr>";
+
+        foreach ($ventas as $v) {
+            // Mapeo dinámico de llaves según lo que haya devuelto SQLite
+            $idVenta = $v['id'] ?? $v['id_venta'] ?? $v['id_ventas'] ?? '---';
+            $fechaFormateada = !empty($v['fecha']) ? date('d/m/Y H:i', strtotime($v['fecha'])) : '---';
+            $cliente = $v['cliente_nombre'] ?? $v['nombre_cliente'] ?? 'Público General';
+            $placa = !empty($v['placa']) ? strtoupper($v['placa']) : '---';
+            $total = $v['total'] ?? 0;
+
+            echo "<tr>";
+            echo "<td style='text-align: center;'>" . $idVenta . "</td>";
+            echo "<td style='text-align: center;'>" . $fechaFormateada . "</td>";
+            echo "<td>" . htmlspecialchars($cliente) . "</td>";
+            echo "<td style='text-align: center; font-weight: bold; font-family: monospace;'>" . $placa . "</td>";
+            echo "<td style='text-align: right;'>S/ " . number_format($total, 2) . "</td>";
+            echo "</tr>";
+        }
+        echo "</table>";
         exit;
     }
-    public function descargar_pdf() {
-        if (!isset($_GET['id'])) exit;
-        $id_venta = intval($_GET['id']);
+
+    // Clon de respaldo
+    public function exportar_excel() {
+        $this->exportarExcel();
+    }
+    public function anular() {
+    // Verificar permisos
+        $this->verificarPermisoDeVenta();
         
-        // 1. Obtener datos (lo mismo que haces en ver_ticket)
-        $venta = $this->ventaModel->getVentaById($id_venta);
-        $detalles = $this->ventaModel->getDetalleVenta($id_venta);
-        $stmtCfg = $this->db->query("SELECT * FROM configuracion LIMIT 1");
-        $config = $stmtCfg->fetch(PDO::FETCH_ASSOC);
-
-        // 2. Cargar Dompdf
-        require_once '../vendor/autoload.php';
-        $dompdf = new \Dompdf\Dompdf();
-
-        // 3. Renderizar la vista en una variable
-        ob_start();
-        require_once '../app/views/ventas/ticket_pdf.php'; // Una versión sin botones, solo diseño
-        $html = ob_get_clean();
-
-        // 4. Configurar y generar
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper([0, 0, 226, 600], 'portrait'); // Tamaño térmico 80mm aprox.
-        $dompdf->render();
-
-        // 5. Salida al navegador
-        $nombre_archivo = "Comprobante-{$venta['serie']}-{$venta['correlativo']}.pdf";
-        $dompdf->stream($nombre_archivo, ["Attachment" => false]); // false para ver, true para descargar
+        $id_venta = $_GET['id'] ?? 0;
+        if (!$id_venta) {
+            header("Location: index.php?route=historial_ventas");
+            exit;
+        }
+        
+        try {
+            // Obtener la venta
+            $stmt = $this->db->prepare("SELECT * FROM ventas WHERE id = :id");
+            $stmt->bindParam(':id', $id_venta);
+            $stmt->execute();
+            $venta = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$venta) {
+                throw new Exception("Venta no encontrada");
+            }
+            
+            if ($venta['estado'] == 0) {
+                throw new Exception("Esta venta ya está anulada");
+            }
+            
+            // Iniciar transacción
+            $this->db->beginTransaction();
+            
+            // 1. Obtener los detalles de la venta (usando venta_id)
+            $stmtDet = $this->db->prepare("SELECT * FROM detalle_ventas WHERE venta_id = :id");
+            $stmtDet->bindParam(':id', $id_venta);
+            $stmtDet->execute();
+            $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
+            
+            // 2. Devolver stock para productos (usando item_id)
+            foreach ($detalles as $item) {
+                if ($item['tipo_item'] == 'PRODUCTO') {
+                    $stmtStock = $this->db->prepare("UPDATE productos SET stock = stock + :cant WHERE id_producto = :id");
+                    $stmtStock->bindParam(':cant', $item['cantidad']);
+                    $stmtStock->bindParam(':id', $item['item_id']);
+                    $stmtStock->execute();
+                }
+            }
+            
+            // 3. Anular la venta
+            $stmtUpd = $this->db->prepare("UPDATE ventas SET estado = 0, estado_sunat = 'ANULADO' WHERE id = :id");
+            $stmtUpd->bindParam(':id', $id_venta);
+            $stmtUpd->execute();
+            
+            // 4. Commit de la transacción
+            $this->db->commit();
+            
+            $_SESSION['mensaje'] = "Venta #{$id_venta} anulada correctamente. Stock devuelto.";
+            
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            $_SESSION['error'] = $e->getMessage();
+        }
+        
+        header("Location: index.php?route=historial_ventas");
         exit;
     }
 }

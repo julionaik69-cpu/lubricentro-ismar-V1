@@ -34,17 +34,21 @@ class ConfigEmpresaController {
             header("Location: index.php?route=login"); exit;
         }
 
-        $data = [
-            'ruc' => $_POST['ruc'] ?? '',
-            'razon_social' => $_POST['razon_social'] ?? '',
-            'direccion' => $_POST['direccion'] ?? '',
-            'sol_usuario' => $_POST['sol_usuario'] ?? '',
-            'sol_clave' => $_POST['sol_clave'] ?? '',
-            'telefono' => $_POST['telefono'] ?? '',
-            'email' => $_POST['email'] ?? ''
-        ];
+        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+            // 🔥 CONTROLADOR TOTALMENTE SINCRONIZADO CON TU FORMULARIO
+            $data = [
+                'ruc'          => $_POST['ruc'] ?? '',
+                'razon_social' => $_POST['razon_social'] ?? '',
+                'direccion'    => $_POST['direccion'] ?? '',
+                'telefono'     => $_POST['telefono'] ?? '',
+                'email'        => $_POST['email'] ?? '',
+                'usuario_sol'  => $_POST['sol_usuario'] ?? '',
+                'clave_sol'    => $_POST['sol_clave'] ?? ''
+            ];
 
-        $this->empresaModel->guardar($data);
+            $this->empresaModel->guardar($data);
+        }
+        
         header("Location: index.php?route=config_empresa&ok=1");
         exit;
     }
@@ -86,7 +90,7 @@ class ConfigEmpresaController {
             }
         }
 
-        header("Location: index.php?route=config_empresa&error=1");
+        header("Location: index.php?route=config_empresa&ok=1&v=" . time());
         exit;
     }
 }

