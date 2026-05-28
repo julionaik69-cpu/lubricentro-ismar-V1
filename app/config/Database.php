@@ -24,7 +24,8 @@ class Database {
                 // ENTORNO LOCAL: SQLite (RUTA CORREGIDA)
                 // ==========================================
                 // Usamos dirname(__DIR__, 2) para subir desde app/config/ hasta la raíz (Lubricentro/)
-                $rutaSQLite = dirname(__DIR__, 2) . '/db_lubricentro.sqlite'; 
+                // ENTORNO LOCAL: SQLite
+                $rutaSQLite = __DIR__ . '/../../data/db_lubricentro.sqlite'; 
                 
                 $dsn = "sqlite:" . $rutaSQLite;
                 $this->conn = new PDO($dsn);
