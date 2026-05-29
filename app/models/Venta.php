@@ -55,9 +55,9 @@ class Venta {
             }
 
             $queryVenta = "INSERT INTO ventas 
-                           (usuario_id, tipo_comprobante, cliente_tipo_doc, cliente_num_doc, cliente_nombre, total, metodo_pago, estado, estado_sunat, fecha) 
-                           VALUES 
-                           (:usr, :tc, :ctd, :cnd, :cnom, :tot, :met, 1, 'REGISTRADO', datetime('now','localtime'))";
+               (usuario_id, tipo_comprobante, cliente_tipo_doc, cliente_num_doc, cliente_nombre, total, metodo_pago, estado, estado_sunat, fecha) 
+               VALUES 
+               (:usr, :tc, :ctd, :cnd, :cnom, :tot, :met, 1, 'REGISTRADO', NOW())";
             
             $stmt = $this->conn->prepare($queryVenta);
             $stmt->bindParam(':usr',      $id_usuario);
