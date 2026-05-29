@@ -247,6 +247,42 @@ class VentaController {
                 'error' => $e->getMessage()
             ]);
         }
+        // Después de obtener $id_cliente
+        $id_cliente = intval($_POST['id_cliente'] ?? 0);
+
+// Si no hay cliente o es 0, buscar o crear "PÚBLICO GENERAL"
+        if ($id_cliente <= 0) {
+            // Buscar cliente público existente
+            $stmtPub = $this->db->prepare("SELECT id_cliente, tipo_documento, numero_documento, nombre 
+                                            FROM clientes 
+                                            WHERE numero_documento = '00000000' OR LOWER(nombre) LIKE '%publico%' 
+                                            LIMIT 1");
+            $stmtPub->execute();
+            $clientePublico = $stmtPub->fetch(PDO::FETCH_ASSOC);
+            
+            if ($clientePublico) {
+                $id_cliente = $clientePublico['id_cliente'];
+                $cliente_tipo_doc = $clientePublico['tipo_documento'];
+                $cliente_num_doc = $clientePublico['numero_documento'];
+                $cliente_nombre = $clientePublico['nombre'];
+            } else {
+                // Crear cliente público
+                $stmtInsert = $this->db->prepare("INSERT INTO clientes (tipo_documento, numero_documento, nombre, estado) 
+                                                VALUES ('1', '00000000', 'PÚBLICO GENERAL', 1)");
+                $stmtInsert->execute();
+                $id_cliente = $this->db->lastInsertId();
+                $cliente_tipo_doc = '1';
+                $cliente_num_doc = '00000000';
+                $cliente_nombre = 'PÚBLICO GENERAL';
+            }
+        } else {
+            // Cliente seleccionado normalmente
+            $clienteData = $this->clienteModel->getById($id_cliente);
+            $cliente_tipo_doc = $clienteData['tipo_documento'] ?? '1';
+            $cliente_num_doc  = $clienteData['numero_documento'] ?? '00000000';
+            $cliente_nombre   = $clienteData['nombre'] ?? 'PÚBLICO GENERAL';
+        }
+
         exit;
     }
 

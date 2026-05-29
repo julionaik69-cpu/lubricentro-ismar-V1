@@ -649,9 +649,12 @@ if (formFinalizar) {
         }
         
         const idCliente = document.getElementById('id_cliente').value;
-        if (!idCliente) {
-            Swal.fire('Cliente requerido', 'Debe seleccionar un cliente', 'warning');
-            return;
+        const clienteBuscar = document.getElementById('cliente_buscar').value;
+
+        // Si no hay cliente, se usará Público General automáticamente
+        if (!idCliente && clienteBuscar === '') {
+            // No bloquear, dejar que el servidor asigne Público General
+            console.log("Sin cliente seleccionado, se usará Público General");
         }
         
         Swal.fire({
