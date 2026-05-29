@@ -138,40 +138,50 @@ class VentaController {
 
     public function finalizar() {
         $this->verificarPermisoDeVenta();
+        
+        // Configurar respuesta JSON
+        header('Content-Type: application/json');
+        ob_clean(); // Limpiar cualquier output previo
+        
         if (empty($_SESSION['carrito'])) {
-            header("Location: index.php?route=nueva_venta"); return;
+            echo json_encode(['success' => false, 'error' => 'Carrito vacío']);
+            exit;
         }
 
-        $total_carrito = 0;
-        foreach ($_SESSION['carrito'] as $item) $total_carrito += $item['subtotal'];
+        try {
+            $total_carrito = 0;
+            foreach ($_SESSION['carrito'] as $item) $total_carrito += $item['subtotal'];
 
-        $tipo_comprobante = $_POST['tipo_comprobante'] ?? '03';
-        $id_cliente       = intval($_POST['id_cliente'] ?? 0);
-        $id_vehiculo      = !empty($_POST['id_vehiculo']) ? intval($_POST['id_vehiculo']) : null;
-        $km_actual        = !empty($_POST['km_actual']) ? floatval($_POST['km_actual']) : 0.00;
-        $metodo_pago      = $_POST['metodo_pago'] ?? 'EFECTIVO';
-        $descuento        = floatval($_POST['descuento'] ?? 0.00);
+            $tipo_comprobante = $_POST['tipo_comprobante'] ?? '03';
+            $id_cliente       = intval($_POST['id_cliente'] ?? 0);
+            $id_vehiculo      = !empty($_POST['id_vehiculo']) ? intval($_POST['id_vehiculo']) : null;
+            $km_actual        = !empty($_POST['km_actual']) ? floatval($_POST['km_actual']) : 0.00;
+            $metodo_pago      = $_POST['metodo_pago'] ?? 'EFECTIVO';
+            $descuento        = floatval($_POST['descuento'] ?? 0.00);
 
-        $total_final = $total_carrito - $descuento;
-        if($total_final < 0) $total_final = 0;
+            $total_final = $total_carrito - $descuento;
+            if($total_final < 0) $total_final = 0;
 
-        $clienteData = $this->clienteModel->getById($id_cliente);
-        $cliente_tipo_doc = $clienteData['tipo_documento'] ?? '1';
-        $cliente_num_doc  = $clienteData['numero_documento'] ?? '00000000';
-        $cliente_nombre   = $clienteData['nombre'] ?? 'Público General';
+            $clienteData = $this->clienteModel->getById($id_cliente);
+            $cliente_tipo_doc = $clienteData['tipo_documento'] ?? '1';
+            $cliente_num_doc  = $clienteData['numero_documento'] ?? '00000000';
+            $cliente_nombre   = $clienteData['nombre'] ?? 'Público General';
 
-        $resultado = $this->ventaModel->registrarVenta(
-            $_SESSION['user_id'],
-            $tipo_comprobante,
-            $cliente_tipo_doc,
-            $cliente_num_doc,
-            $cliente_nombre,
-            $total_final,
-            $_SESSION['carrito'],
-            $metodo_pago
-        );
+            $resultado = $this->ventaModel->registrarVenta(
+                $_SESSION['user_id'],
+                $tipo_comprobante,
+                $cliente_tipo_doc,
+                $cliente_num_doc,
+                $cliente_nombre,
+                $total_final,
+                $_SESSION['carrito'],
+                $metodo_pago
+            );
 
-        if ($resultado['ok']) {
+            if (!$resultado['ok']) {
+                throw new Exception($resultado['msg'] ?? 'Error al registrar venta');
+            }
+            
             $id_venta = $resultado['id'];
 
             // CONDICIÓN INTELIGENTE DE LUBRICENTRO AUTOMATIZADA
@@ -179,13 +189,12 @@ class VentaController {
                 $this->vehiculoModel->actualizarKilometraje($id_vehiculo, $km_actual);
                 $proximo_cambio = $km_actual + 5000;
 
-                // Forzamos el guardado con la fecha de hoy en formato nativo SQLite (YYYY-MM-DD HH:MM:SS)
+                // CORREGIDO: Usar NOW() en lugar de datetime('now', 'localtime')
                 $stmtH = $this->db->prepare("INSERT INTO servicios_realizados 
                     (id_venta, id_vehiculo, id_servicio, observaciones, kilometraje_actual, proximo_cambio, fecha_registro) 
-                    VALUES (:id_v, :id_veh, :id_ser, :obs, :km_act, :prox, datetime('now', 'localtime'))");
+                    VALUES (:id_v, :id_veh, :id_ser, :obs, :km_act, :prox, NOW())");
                 
                 foreach ($_SESSION['carrito'] as $item) {
-                    // Si se vende un servicio o un ítem relacionado, se guarda en el historial clínico del auto
                     $id_servicio_relacionado = ($item['tipo'] === 'SERVICIO') ? $item['id'] : 1; 
                     
                     $stmtH->execute([
@@ -204,36 +213,20 @@ class VentaController {
             $stmtUpd = $this->db->prepare("UPDATE ventas SET estado_sunat = 'LOCAL' WHERE id = :id");
             $stmtUpd->execute([':id' => $id_venta]);
 
-            $alerta = '✅ Venta registrada correctamente. Comprobante guardado en modo local.';
-            /*  
-            require_once '../app/sunat/SunatHelper.php';
-            $ventaData = $this->ventaModel->getVentaById($id_venta);
-            $detallesData = $this->ventaModel->getDetalleVenta($id_venta);
+            // Respuesta JSON exitosa
+            echo json_encode([
+                'success' => true,
+                'id_venta' => $id_venta,
+                'mensaje' => 'Venta registrada correctamente'
+            ]);
             
-            $stmtCfg = $this->db->query("SELECT ruc, razon_social as nombre_empresa, direccion, telefono, email FROM configuracion_empresa LIMIT 1");
-            $configData = $stmtCfg->fetch(PDO::FETCH_ASSOC);
-
-            $sunatRes = SunatHelper::emitirComprobante($ventaData, $detallesData, $configData);
-            
-            $stmtUpd = $this->db->prepare("UPDATE ventas SET estado_sunat = :est WHERE id = :id");
-            $stmtUpd->execute([':est' => $sunatRes['estado_sunat'], ':id' => $id_venta]);
-
-            $alerta = $sunatRes['xml_generado'] 
-                ? ($sunatRes['ok'] ? '✅ Comprobante enviado y aprobado por SUNAT' : '⚠️ Registrado. SUNAT: ' . $sunatRes['msg'])
-                : '✅ Ticket registrado de forma interna local.';*/
-
-            echo "<script>
-                alert('$alerta');
-                if(confirm('¿Desea imprimir el Ticket de servicio técnico?')) {
-                    window.location.href = 'index.php?route=ver_ticket&id=$id_venta&print=1';
-                } else {
-                    window.location.href = 'index.php?route=nueva_venta';
-                }
-            </script>";
-        } else {
-            $msg = $resultado['msg'] ?? 'Error desconocido';
-            echo "<script>alert('❌ Error de Base de Datos: $msg'); window.history.back();</script>";
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]);
         }
+        exit;
     }
 
 
