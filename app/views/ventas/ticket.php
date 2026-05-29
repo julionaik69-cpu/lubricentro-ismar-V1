@@ -10,26 +10,138 @@ if(isset($_GET['print']) && $_GET['print'] == 1) {
     <title>Ticket #<?php echo str_pad($venta['id'], 5, "0", STR_PAD_LEFT); ?></title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Courier New', Courier, monospace; background:#e0e0e0; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:20px; }
-        .ticket { width:320px; background:#fff; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,.3); }
-        .header { text-align:center; border-bottom:2px dashed #000; padding-bottom:10px; margin-bottom:10px; }
-        .header h3 { font-size:16px; letter-spacing:1px; font-weight: bold; margin-bottom: 4px; }
-        .header p { font-size:11px; line-height:1.4; color:#000; }
-        .info { font-size:11px; margin-bottom:10px; line-height:1.6; }
-        table { width:100%; font-size:11px; border-collapse:collapse; margin: 10px 0; }
-        th { border-bottom:1px solid #000; padding:4px 0; }
-        td { padding:4px 0; }
-        .price { text-align:right; }
-        .separator { border-top:1px dashed #000; margin:6px 0; }
-        .totales-box { width: 100%; margin-top: 5px; font-size: 11px; }
-        .total-row td { font-weight:bold; font-size:13px; border-top:2px solid #000; padding-top:8px; }
-        .footer { text-align:center; border-top:2px dashed #000; padding-top:10px; margin-top:10px; font-size:10px; line-height: 1.4; }
-        .acciones { text-align:center; margin-top:15px; display:flex; gap:8px; justify-content:center; }
-        .btn-accion { padding: 6px 12px; font-weight: bold; border-radius: 4px; border: 1px solid #ccc; cursor: pointer; }
-        @media print { body { background:white; padding:0; } .acciones { display:none !important; } }
+        body { 
+            font-family:'Courier New', Courier, monospace; 
+            background: #e0e0e0; 
+            display:flex; 
+            justify-content:center; 
+            align-items:flex-start; 
+            min-height:100vh; 
+            padding:20px;
+        }
+        .ticket { 
+            width:320px; 
+            background:#fff; 
+            padding:16px; 
+            box-shadow:0 2px 8px rgba(0,0,0,.3);
+            margin-bottom: 20px;
+        }
+        .header { 
+            text-align:center; 
+            border-bottom:2px dashed #000; 
+            padding-bottom:10px; 
+            margin-bottom:10px; 
+        }
+        .header h3 { 
+            font-size:16px; 
+            letter-spacing:1px; 
+            font-weight: bold; 
+            margin-bottom: 4px; 
+        }
+        .header p { 
+            font-size:11px; 
+            line-height:1.4; 
+            color:#000; 
+        }
+        .info { 
+            font-size:11px; 
+            margin-bottom:10px; 
+            line-height:1.6; 
+        }
+        table { 
+            width:100%; 
+            font-size:11px; 
+            border-collapse:collapse; 
+            margin: 10px 0; 
+        }
+        th { 
+            border-bottom:1px solid #000; 
+            padding:4px 0; 
+        }
+        td { 
+            padding:4px 0; 
+        }
+        .price { 
+            text-align:right; 
+        }
+        .separator { 
+            border-top:1px dashed #000; 
+            margin:6px 0; 
+        }
+        .totales-box { 
+            width: 100%; 
+            margin-top: 5px; 
+            font-size: 11px; 
+        }
+        .total-row td { 
+            font-weight:bold; 
+            font-size:13px; 
+            border-top:2px solid #000; 
+            padding-top:8px; 
+        }
+        .footer { 
+            text-align:center; 
+            border-top:2px dashed #000; 
+            padding-top:10px; 
+            margin-top:10px; 
+            font-size:10px; 
+            line-height: 1.4; 
+        }
+        .acciones { 
+            text-align:center; 
+            margin-top:15px; 
+            display:flex; 
+            gap:10px; 
+            justify-content:center;
+            position: sticky;
+            bottom: 20px;
+            background: transparent;
+            padding: 10px;
+        }
+        .btn-accion { 
+            padding: 10px 20px; 
+            font-weight: bold; 
+            border-radius: 8px; 
+            border: none; 
+            cursor: pointer; 
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        .btn-accion:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .btn-imprimir {
+            background: #10B981; 
+            color: white;
+        }
+        .btn-cerrar {
+            background: #EF4444; 
+            color: white;
+        }
+        .btn-cerrar:hover {
+            background: #DC2626;
+        }
+        .btn-imprimir:hover {
+            background: #059669;
+        }
+        @media print { 
+            body { background:white; padding:0; } 
+            .acciones { display:none !important; } 
+            .ticket { box-shadow: none; margin: 0; }
+            .btn-accion { display: none; }
+        }
+        .mensaje-auto-cierre {
+            text-align: center;
+            font-size: 10px;
+            color: #6B7280;
+            margin-top: 10px;
+            padding: 5px;
+        }
     </style>
 </head>
-<body onload="window.print()">
+<body>
 <div class="ticket">
     <div class="header">
         <h3><?php echo strtoupper(htmlspecialchars($empresa['razon_social'])); ?></h3>
@@ -102,8 +214,72 @@ if(isset($_GET['print']) && $_GET['print'] == 1) {
 </div>
 
 <div class="acciones">
-    <button class="btn-accion" style="background: #10B981; color: white;" onclick="window.print()">🖨️ Imprimir</button>
-    <button class="btn-accion" href="index.php?route=dashboard" style="background: #EF4444; color: white;" onclick="window.close()">✕ Cerrar</button>
+    <button class="btn-accion btn-imprimir" onclick="imprimirTicket()">
+        🖨️ Imprimir
+    </button>
+    <button class="btn-accion btn-cerrar" onclick="cerrarTicket()">
+        ✕ Cerrar Ticket
+    </button>
 </div>
+<div class="mensaje-auto-cierre">
+    💡 Presiona <strong>ESC</strong> para cerrar esta ventana | La ventana se cerrará automáticamente en <span id="contador">15</span> segundos
+</div>
+
+<script>
+// Función para imprimir
+function imprimirTicket() {
+    window.print();
+}
+
+// Función para cerrar la ventana/pestaña
+function cerrarTicket() {
+    // Intentar cerrar la ventana
+    window.close();
+    
+    // Fallback por si no se cierra
+    setTimeout(function() {
+        alert("✅ Venta completada. Puedes cerrar esta pestaña manualmente.");
+    }, 100);
+}
+
+// Cerrar con tecla ESC
+document.addEventListener('keydown', function(e) {
+    if(e.key === 'Escape') {
+        cerrarTicket();
+    }
+});
+
+// Auto-cierre después de 15 segundos (para no dejar pestañas abiertas)
+let segundos = 15;
+const contadorSpan = document.getElementById('contador');
+const intervalo = setInterval(function() {
+    segundos--;
+    if (contadorSpan) {
+        contadorSpan.textContent = segundos;
+    }
+    if (segundos <= 0) {
+        clearInterval(intervalo);
+        cerrarTicket();
+    }
+}, 1000);
+
+// Si el usuario interactúa con los botones, cancelamos el auto-cierre
+document.querySelectorAll('.btn-accion').forEach(btn => {
+    btn.addEventListener('click', function() {
+        clearInterval(intervalo);
+    });
+});
+
+// También cancelar si el usuario hace clic en cualquier parte
+document.body.addEventListener('click', function() {
+    clearInterval(intervalo);
+    const mensajeAuto = document.querySelector('.mensaje-auto-cierre');
+    if (mensajeAuto) {
+        mensajeAuto.style.opacity = '0.5';
+        mensajeAuto.innerHTML = '🔒 Auto-cierre cancelado (cierre manual)';
+    }
+});
+</script>
+
 </body>
 </html>

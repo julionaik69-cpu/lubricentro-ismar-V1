@@ -648,15 +648,6 @@ if (formFinalizar) {
             return;
         }
         
-        const idCliente = document.getElementById('id_cliente').value;
-        const clienteBuscar = document.getElementById('cliente_buscar').value;
-
-        // Si no hay cliente, se usará Público General automáticamente
-        if (!idCliente && clienteBuscar === '') {
-            // No bloquear, dejar que el servidor asigne Público General
-            console.log("Sin cliente seleccionado, se usará Público General");
-        }
-        
         Swal.fire({
             title: 'Procesando venta...',
             text: 'Por favor espere',
@@ -672,32 +663,35 @@ if (formFinalizar) {
             method: 'POST',
             body: formData
         })
-        .then(response => response.text())  // Primero como texto para debug
-        .then(text => {
-            console.log("Respuesta del servidor:", text); // Ver qué devuelve
-            
-            // Intentar parsear JSON
-            try {
-                const data = JSON.parse(text);
-                if (data.success) {
-                    Swal.fire({
-                        title: '¡Venta exitosa!',
-                        text: data.mensaje,
-                        icon: 'success',
-                        confirmButtonText: 'Ver Ticket'
-                    }).then((result) => {
-                        window.location.href = 'index.php?route=ver_ticket&id=' + data.id_venta;
-                    });
-                } else {
-                    Swal.fire('Error', data.error || 'Error al procesar venta', 'error');
-                }
-            } catch (e) {
-                console.error("Error parseando JSON:", e);
-                Swal.fire('Error del servidor', 'El servidor devolvió: ' + text.substring(0, 200), 'error');
+        .then(response => response.json())
+        .then(data => {
+            if(data.success) {
+                Swal.fire({
+                    title: '✅ ¡Venta exitosa!',
+                    html: `
+                        <div class="text-start">
+                            <p><strong>ID Venta:</strong> #${data.id_venta}</p>
+                            <p><strong>Total:</strong> S/ ${totalCarrito.toFixed(2)}</p>
+                        </div>
+                    `,
+                    icon: 'success',
+                    showCancelButton: true,
+                    confirmButtonText: '🖨️ Ver Ticket',
+                    cancelButtonText: '🏠 Continuar vendiendo'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Abrir ticket en nueva pestaña
+                        window.open('index.php?route=ver_ticket&id=' + data.id_venta, '_blank');
+                    }
+                    // Recargar la página de venta (limpia el carrito)
+                    window.location.href = 'index.php?route=nueva_venta';
+                });
+            } else {
+                Swal.fire('Error', data.error || 'Error al procesar venta', 'error');
             }
         })
         .catch(error => {
-            console.error('Error en fetch:', error);
+            console.error('Error:', error);
             Swal.fire('Error de conexión', error.message, 'error');
         });
     });
