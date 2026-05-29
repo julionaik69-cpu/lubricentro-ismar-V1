@@ -14,7 +14,7 @@ class BackupController {
 
         // 2. RUTA EXACTA REAL DETECTADA EN TU COMPUTADORA
         // Retrocedemos dos niveles desde app/controllers/ para llegar a la raíz del Lubricentro
-        $archivo_base_datos = realpath(__DIR__ . '/../../db_lubricentro.sqlite');
+        //$archivo_base_datos = realpath(__DIR__ . '/../../db_lubricentro.sqlite');
 
         // 3. Rescate por si XAMPP interpreta las barras inclinadas de forma absoluta en Windows
         if (!$archivo_base_datos || !file_exists($archivo_base_datos)) {
@@ -49,5 +49,14 @@ class BackupController {
         // 7. Leemos el archivo físico de SQLite y lo empujamos directo a las descargas de Brave
         readfile($archivo_base_datos);
         exit();
+
+        if (!file_exists(__DIR__ . '/../../data/db_lubricentro.sqlite')) {
+            // Estamos en producción (Render/Supabase)
+            // Redirigir o mostrar mensaje amigable
+            $_SESSION['mensaje'] = "Backup solo disponible en entorno local";
+            header("Location: /dashboard");
+            exit;
+        }
+
     }
 }

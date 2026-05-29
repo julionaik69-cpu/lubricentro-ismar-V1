@@ -46,7 +46,7 @@ class AlertaController {
                 v.cliente_num_doc,
                 v.total,
                 v.placa,
-                julianday('now') - julianday(v.fecha) as dias_transcurridos
+                EXTRACT(EPOCH FROM (NOW() - v.fecha)) / 86400 as dias_transcurridos
             FROM ventas v
             WHERE v.placa IS NOT NULL AND v.placa != ''
             ORDER BY v.fecha DESC

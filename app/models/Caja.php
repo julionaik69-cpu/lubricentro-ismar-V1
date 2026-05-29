@@ -22,9 +22,9 @@ class Caja {
         $existente = $this->obtenerCajaAbierta($usuario_id);
         if ($existente) return false;
 
-        // Corregido: monto_apertura en lugar de monto_inicial, y date('now', 'localtime')
+        // MODIFICADO: NOW() para PostgreSQL
         $query = "INSERT INTO cajas (usuario_id, monto_apertura, estado, fecha_apertura) 
-                  VALUES (:uid, :monto, 1, datetime('now', 'localtime'))";
+                  VALUES (:uid, :monto, 1, NOW())";
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':uid', $usuario_id);
         $stmt->bindParam(':monto', $monto_inicial);
@@ -95,8 +95,9 @@ class Caja {
     }
 
     public function cerrar($id_caja, $total_ventas, $monto_final) {
+        // MODIFICADO: NOW() para PostgreSQL
         $query = "UPDATE cajas 
-                  SET fecha_cierre = datetime('now', 'localtime'), 
+                  SET fecha_cierre = NOW(), 
                       monto_cierre  = :final,
                       monto_apertura = monto_apertura, 
                       estado       = 0 
@@ -108,14 +109,14 @@ class Caja {
     }
 
     public function getHistorial($fecha_inicio, $fecha_fin) {
-        // Adaptación de subconsultas a SQLite usando la relación de tiempos y auditoría de usuario
+        // Adaptación para PostgreSQL (funciona igual que SQLite aquí)
         $sql = "SELECT c.*, u.nombre as cajero,
                     (SELECT COALESCE(SUM(v.total), 0) FROM ventas v WHERE v.usuario_id = c.usuario_id AND v.fecha >= c.fecha_apertura AND v.estado = 1) as ventas_turno,
                     (SELECT COALESCE(SUM(g.monto), 0) FROM gastos g WHERE g.usuario_id = c.usuario_id AND g.fecha >= c.fecha_apertura) as gastos_turno,
                     (SELECT COUNT(*) FROM ventas v WHERE v.usuario_id = c.usuario_id AND v.fecha >= c.fecha_apertura AND v.estado = 1) as num_tickets
                 FROM cajas c
                 JOIN usuarios u ON c.usuario_id = u.id_usuario
-                WHERE date(c.fecha_apertura) BETWEEN :f1 AND :f2
+                WHERE DATE(c.fecha_apertura) BETWEEN :f1 AND :f2
                 ORDER BY c.fecha_apertura DESC";
         $stmt = $this->conn->prepare($sql);
         $stmt->bindParam(':f1', $fecha_inicio);
