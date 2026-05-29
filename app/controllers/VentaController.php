@@ -137,36 +137,56 @@ class VentaController {
     }
 
     public function finalizar() {
-        $this->verificarPermisoDeVenta();
+    // Deshabilitar caché y forzar JSON
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
+    header('Content-Type: application/json; charset=utf-8');
+    
+    // Limpiar cualquier output previo
+        if (ob_get_length()) ob_clean();
         
-        // Configurar respuesta JSON
-        header('Content-Type: application/json');
-        ob_clean(); // Limpiar cualquier output previo
-        
-        if (empty($_SESSION['carrito'])) {
-            echo json_encode(['success' => false, 'error' => 'Carrito vacío']);
-            exit;
-        }
-
         try {
+            // Verificar autenticación
+            if (!isset($_SESSION['user_id'])) {
+                echo json_encode(['success' => false, 'error' => 'No autenticado']);
+                exit;
+            }
+            
+            // Verificar caja abierta
+            $caja = $this->cajaModel->obtenerCajaAbierta($_SESSION['user_id']);
+            if (!$caja) {
+                echo json_encode(['success' => false, 'error' => 'Caja no aperturada']);
+                exit;
+            }
+            
+            // Verificar carrito
+            if (empty($_SESSION['carrito'])) {
+                echo json_encode(['success' => false, 'error' => 'Carrito vacío']);
+                exit;
+            }
+            
             $total_carrito = 0;
-            foreach ($_SESSION['carrito'] as $item) $total_carrito += $item['subtotal'];
-
+            foreach ($_SESSION['carrito'] as $item) {
+                $total_carrito += $item['subtotal'];
+            }
+            
             $tipo_comprobante = $_POST['tipo_comprobante'] ?? '03';
             $id_cliente       = intval($_POST['id_cliente'] ?? 0);
             $id_vehiculo      = !empty($_POST['id_vehiculo']) ? intval($_POST['id_vehiculo']) : null;
             $km_actual        = !empty($_POST['km_actual']) ? floatval($_POST['km_actual']) : 0.00;
             $metodo_pago      = $_POST['metodo_pago'] ?? 'EFECTIVO';
             $descuento        = floatval($_POST['descuento'] ?? 0.00);
-
+            
             $total_final = $total_carrito - $descuento;
-            if($total_final < 0) $total_final = 0;
-
+            if ($total_final < 0) $total_final = 0;
+            
+            // Obtener datos del cliente
             $clienteData = $this->clienteModel->getById($id_cliente);
             $cliente_tipo_doc = $clienteData['tipo_documento'] ?? '1';
             $cliente_num_doc  = $clienteData['numero_documento'] ?? '00000000';
             $cliente_nombre   = $clienteData['nombre'] ?? 'Público General';
-
+            
+            // Registrar venta
             $resultado = $this->ventaModel->registrarVenta(
                 $_SESSION['user_id'],
                 $tipo_comprobante,
@@ -177,47 +197,48 @@ class VentaController {
                 $_SESSION['carrito'],
                 $metodo_pago
             );
-
+            
             if (!$resultado['ok']) {
                 throw new Exception($resultado['msg'] ?? 'Error al registrar venta');
             }
             
             $id_venta = $resultado['id'];
-
-            // CONDICIÓN INTELIGENTE DE LUBRICENTRO AUTOMATIZADA
+            
+            // Registrar servicios realizados si hay vehículo
             if (!empty($id_vehiculo)) {
                 $this->vehiculoModel->actualizarKilometraje($id_vehiculo, $km_actual);
                 $proximo_cambio = $km_actual + 5000;
-
-                // CORREGIDO: Usar NOW() en lugar de datetime('now', 'localtime')
+                
+                // CORREGIDO: usar NOW() para PostgreSQL
                 $stmtH = $this->db->prepare("INSERT INTO servicios_realizados 
                     (id_venta, id_vehiculo, id_servicio, observaciones, kilometraje_actual, proximo_cambio, fecha_registro) 
                     VALUES (:id_v, :id_veh, :id_ser, :obs, :km_act, :prox, NOW())");
                 
                 foreach ($_SESSION['carrito'] as $item) {
-                    $id_servicio_relacionado = ($item['tipo'] === 'SERVICIO') ? $item['id'] : 1; 
-                    
+                    $id_servicio_relacionado = ($item['tipo'] === 'SERVICIO') ? $item['id'] : 1;
                     $stmtH->execute([
                         ':id_v'   => $id_venta,
                         ':id_veh' => $id_vehiculo,
                         ':id_ser' => $id_servicio_relacionado,
-                        ':obs'    => 'Mantenimiento de fluidos: Venta registrada de ' . $item['nombre'],
+                        ':obs'    => 'Mantenimiento: ' . $item['nombre'],
                         ':km_act' => $km_actual,
                         ':prox'   => $proximo_cambio
                     ]);
                 }
             }
-
+            
+            // Limpiar carrito
             $_SESSION['carrito'] = [];
-
+            
+            // Actualizar estado SUNAT
             $stmtUpd = $this->db->prepare("UPDATE ventas SET estado_sunat = 'LOCAL' WHERE id = :id");
             $stmtUpd->execute([':id' => $id_venta]);
-
-            // Respuesta JSON exitosa
+            
+            // Respuesta exitosa
             echo json_encode([
                 'success' => true,
                 'id_venta' => $id_venta,
-                'mensaje' => 'Venta registrada correctamente'
+                'mensaje' => 'Venta registrada exitosamente'
             ]);
             
         } catch (Exception $e) {

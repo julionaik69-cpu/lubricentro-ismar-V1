@@ -638,19 +638,18 @@ function confirmarVaciarCola() {
 
 // Reemplaza TODO el event listener del formFinalizar
 const formFinalizar = document.getElementById('formFinalizarVenta');
-if(formFinalizar) {
+if (formFinalizar) {
     formFinalizar.addEventListener('submit', function(e) {
         e.preventDefault();
         
         const totalCarrito = <?php echo $total_venta; ?>;
-        if(totalCarrito <= 0) {
+        if (totalCarrito <= 0) {
             Swal.fire('Error', 'No hay items en el carrito', 'warning');
             return;
         }
         
-        // Verificar que haya cliente seleccionado
         const idCliente = document.getElementById('id_cliente').value;
-        if(!idCliente) {
+        if (!idCliente) {
             Swal.fire('Cliente requerido', 'Debe seleccionar un cliente', 'warning');
             return;
         }
@@ -664,35 +663,39 @@ if(formFinalizar) {
             }
         });
         
-        // Enviar como JSON o FormData
         const formData = new FormData(formFinalizar);
         
         fetch('index.php?route=finalizar_venta', {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
-        .then(data => {
-            if(data.success) {
-                Swal.fire({
-                    title: '¡Venta exitosa!',
-                    text: data.mensaje,
-                    icon: 'success',
-                    confirmButtonText: 'Ver Ticket'
-                }).then((result) => {
-                    if(result.isConfirmed) {
+        .then(response => response.text())  // Primero como texto para debug
+        .then(text => {
+            console.log("Respuesta del servidor:", text); // Ver qué devuelve
+            
+            // Intentar parsear JSON
+            try {
+                const data = JSON.parse(text);
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Venta exitosa!',
+                        text: data.mensaje,
+                        icon: 'success',
+                        confirmButtonText: 'Ver Ticket'
+                    }).then((result) => {
                         window.location.href = 'index.php?route=ver_ticket&id=' + data.id_venta;
-                    } else {
-                        window.location.href = 'index.php?route=nueva_venta';
-                    }
-                });
-            } else {
-                Swal.fire('Error', data.error || 'Error al procesar venta', 'error');
+                    });
+                } else {
+                    Swal.fire('Error', data.error || 'Error al procesar venta', 'error');
+                }
+            } catch (e) {
+                console.error("Error parseando JSON:", e);
+                Swal.fire('Error del servidor', 'El servidor devolvió: ' + text.substring(0, 200), 'error');
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            Swal.fire('Error', 'Error de conexión con el servidor', 'error');
+            console.error('Error en fetch:', error);
+            Swal.fire('Error de conexión', error.message, 'error');
         });
     });
 }
