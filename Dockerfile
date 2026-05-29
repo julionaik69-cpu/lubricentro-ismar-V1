@@ -13,4 +13,10 @@ COPY . /var/www/html/
 # Darle permisos correctos a las carpetas
 RUN chown -R www-data:www-data /var/www/html/
 
+# Cambiar el propietario de los archivos al usuario de Apache
+RUN chown -R www-data:www-data /var/www/html
+
+# Dar permisos de lectura y escritura a la carpeta de la base de datos
+RUN chmod -R 775 /var/www/html/ruta/de/tu/carpeta_db
+
 EXPOSE 80

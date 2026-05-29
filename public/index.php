@@ -33,12 +33,11 @@ $database = new Database();
 $db = $database->getConnection();
 
 if (!$db) {
-    die("<div style='font-family:sans-serif;padding:40px;color:red;'><h2>❌ Error de conexión a la base de datos</h2><p>Verifica que el archivo SQLite existe y tiene permisos de escritura en la raíz.</p></div>");
-}
+    die("<div style='font-family:sans-serif;padding:40px;color:red;'><h2>❌ Error de conexión a la base de datos</h2><p>Verifica que las credenciales de la base de datos en la nube sean correctas.</p></div>");}
 
 // Optimización explícita para alto rendimiento en transacciones de lubricentro
-$db->exec("PRAGMA journal_mode=WAL;");
-$db->exec("PRAGMA foreign_keys=ON;");
+//$db->exec("PRAGMA journal_mode=WAL;");
+//$db->exec("PRAGMA foreign_keys=ON;");
 
 // 4. Captura e inicialización limpia de la ruta solicitada por Brave
 $route = isset($_GET['route']) ? trim($_GET['route']) : 'login';
