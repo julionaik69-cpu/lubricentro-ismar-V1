@@ -52,7 +52,7 @@ class Database {
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         monto REAL NOT NULL,
                         descripcion TEXT NOT NULL,
-                        fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                        fecha TIMESTAMP NOT NULL DEFAULT NOW(),
                         usuario_id INTEGER,
                         FOREIGN KEY (usuario_id) REFERENCES usuarios(id_usuario)
                     );

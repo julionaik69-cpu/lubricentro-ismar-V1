@@ -57,7 +57,7 @@ class Gasto {
 
     public function registrar($monto, $descripcion, $usuario_id) {
         $query = "INSERT INTO " . $this->table_name . " (monto, descripcion, usuario_id, fecha) 
-                  VALUES (:monto, :desc, :uid, datetime('now', 'localtime'))";
+                  VALUES (:monto, :desc, :uid, NOW())";
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':monto', $monto);
         $stmt->bindParam(':desc', $descripcion);

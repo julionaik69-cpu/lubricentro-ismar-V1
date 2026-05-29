@@ -265,7 +265,7 @@ switch ($route) {
         if (!isset($_SESSION['user_rol']) || !in_array(strtoupper($_SESSION['user_rol']), ['ADMIN', 'ADMINISTRADOR'])) {
             header("Location: index.php?route=login"); exit;
         }
-        $db->exec("UPDATE cajas SET fecha_cierre = datetime('now','localtime'), monto_final = 0, estado = 0 WHERE estado = 1");
+        $db->exec("UPDATE cajas SET fecha_cierre = NOW (), monto_final = 0, estado = 0 WHERE estado = 1");
         session_destroy();
         echo "<script>alert('🛠️ Todas las cajas abiertas fueron cerradas de forma exitosa. Inicia sesión limpiamente.'); window.location.href='index.php?route=login';</script>";
         break;
